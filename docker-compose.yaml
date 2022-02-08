@@ -1,0 +1,4 @@
+version: "3"
+services:
+  cockroach:
+    image: "${COCKROACH_IMAGE:-cockroach}"
