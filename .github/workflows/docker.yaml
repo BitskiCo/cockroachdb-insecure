@@ -15,96 +15,12 @@ on:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
-    env:
-      # github.repository as <account>/<repo>
-      IMAGE_NAME: ${{ github.repository }}
-      LOCAL_IMAGE: localhost:5000/bitski
-      COCKROACH_IMAGE: cockroachdb/cockroach:latest
-      # Use docker.io for Docker Hub if empty
-      REGISTRY: ghcr.io
-    services:
-      registry:
-        image: registry:2
-        ports:
-          - 5000:5000
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
-
-      # Extract metadata (tags, labels) for Docker
-      # https://github.com/docker/metadata-action
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v3
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-
-      - name: Set Docker cache scope
-        env:
-          SCOPE: ${{ runner.os }}-${{ runner.arch }}-docker-${{ hashFiles('Dockerfile') }}
-        run: >
-          echo DOCKER_CACHE_FROM=type=gha,scope=${SCOPE} |
-          tee -a $GITHUB_ENV
-
-          echo DOCKER_CACHE_TO=type=gha,scope=${SCOPE},mode=max |
-          tee -a $GITHUB_ENV
-          tags: |
-            type=schedule,pattern=latest
-            type=ref,event=branch
-            type=ref,event=tag
-            type=ref,event=pr
-
-      - name: Configure source image tag
-        if: github.ref_type == 'tag'
-        env:
-          REF: ${{ github.ref }}
-        run: >
-          echo "COCKROACH_IMAGE=cockroachdb/cockroach:${REF#refs/tags/}" |
-          tee -a $GITHUB_ENV
-
-      # Build Docker image
-      # https://github.com/docker/build-push-action
-      - name: Build Docker image
-        id: build-and-push
-        uses: docker/build-push-action@v2
-        with:
-          context: .
-          build-args: BASE_IMAGE=${{ env.COCKROACH_IMAGE }}
-          push: true
-          tags: ${{ env.LOCAL_IMAGE }}
-          labels: ${{ steps.meta.outputs.labels }}
-
-      - name: Run startup tests
-        env:
-          COCKROACH_IMAGE: ${{ env.LOCAL_IMAGE }}
-        run: |
-          docker compose up --wait
-          EXIT_CODE=$?
-          docker compose logs
-          docker compose kill
-          docker compose down
-          exit $EXIT_CODE
-
-      # Login against a Docker registry except on PR
-      # https://github.com/docker/login-action
-      - name: Log into Docker registry
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v1
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Push to Docker
-        if: github.event_name != 'pull_request'
-        env:
-          TAGS: ${{ steps.meta.outputs.tags }}
-        run: |
-          docker pull "$LOCAL_IMAGE"
-          echo "$TAGS" | xargs -n1 docker tag "$LOCAL_IMAGE"
-          echo "$TAGS" | xargs -n1 docker push
+    if: >
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    uses: BitskiCo/bitski-internal-sdk/.github/workflows/docker.yaml@v1
+    with:
+      build_args: BASE_IMAGE=cockroachdb/cockroach:${{ github.ref_name }}
+      push: ${{ github.event_name != 'pull_request' }}
+      startup_test: true
+      startup_image_env_name: COCKROACH_IMAGE
