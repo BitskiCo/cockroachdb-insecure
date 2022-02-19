@@ -8,8 +8,7 @@ name: Docker
 on:
   pull_request: {}
   push:
-    branches: [main]
-    tags: ["v*.*.*"]
+    tags: ["latest", "v*.*.*"]
   schedule:
     - cron: "24 0 * * 0"
 
