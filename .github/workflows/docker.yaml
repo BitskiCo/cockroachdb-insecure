@@ -8,18 +8,37 @@ name: Docker
 on:
   pull_request: {}
   push:
-    tags: ["latest", "v*.*.*"]
+    branches: [main]
+    tags: ["v*.*.*"]
   schedule:
     - cron: "24 0 * * 0"
+  workflow_dispatch: {}
 
 jobs:
   publish:
     if: >
+      github.ref != 'refs/heads/main' &&
+      (
       github.event_name != 'workflow_run' ||
       github.event.workflow_run.conclusion == 'success'
+      )
     uses: BitskiCo/bitski-internal-sdk/.github/workflows/docker.yaml@v1
     with:
       build_args: BASE_IMAGE=cockroachdb/cockroach:${{ github.ref_name }}
+      push: ${{ github.event_name != 'pull_request' }}
+      startup_test: true
+      startup_image_env_name: COCKROACH_IMAGE
+
+  publish_latest:
+    if: >
+      github.ref == 'refs/heads/main' &&
+      (
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+      )
+    uses: BitskiCo/bitski-internal-sdk/.github/workflows/docker.yaml@v1
+    with:
+      build_args: BASE_IMAGE=cockroachdb/cockroach:latest
       push: ${{ github.event_name != 'pull_request' }}
       startup_test: true
       startup_image_env_name: COCKROACH_IMAGE
