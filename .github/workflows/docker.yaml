@@ -8,37 +8,95 @@ name: Docker
 on:
   pull_request: {}
   push:
-    branches: [main]
-    tags: ["v*.*.*"]
-  schedule:
-    - cron: "24 0 * * 0"
+    tags:
+      - "v*.*.*"
   workflow_dispatch: {}
 
-jobs:
-  publish:
-    if: >
-      github.ref != 'refs/heads/main' &&
-      (
-      github.event_name != 'workflow_run' ||
-      github.event.workflow_run.conclusion == 'success'
-      )
-    uses: BitskiCo/bitski-internal-sdk/.github/workflows/docker.yaml@v1
-    with:
-      build_args: BASE_IMAGE=cockroachdb/cockroach:${{ github.ref_name }}
-      push: ${{ github.event_name != 'pull_request' }}
-      startup_test: true
-      startup_image_env_name: COCKROACH_IMAGE
+concurrency: 
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
-  publish_latest:
+jobs:
+  arm64:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    env:
+      LOCAL_IMAGE: sha-${{ github.sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        with:
+          repository: cockroachdb/cockroach
+          # ref: ${{ github.ref_name }}
+          ref: v21.2.10
+
+      - name: Configure image tags
+        env:
+          IMAGE_NAME: ${{ github.repository }}
+        run: |
+          echo "IMAGES=ghcr.io/${IMAGE_NAME,,}" | tee -a $GITHUB_ENV
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v3
+        with:
+          images: ${{ env.IMAGES }}
+
+      - name: Build and push
+        env:
+          # IMAGE_NAME: ${{ github.repository }}:${{ github.ref_name }}-arm64
+          IMAGE_NAME: ${{ github.repository }}:v21.2.10-arm64
+        run: |
+          ./build/builder.sh mkrelease arm64-linux-gnu
+
+          cp cockroach-linux-*-gnu-aarch64 build/deploy/cockroach
+          cp /go/docker/native/aarch64-unknown-linux-gnu/geos/lib/libgeos{,_c}.so build/deploy/
+          cp -r licenses build/deploy/
+
+          docker build -t "$LOCAL_IMAGE" build/deploy
+
+      - name: Tag Docker image
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          IFS=$'\n ' command eval 'TAGS=($TAGS)'
+          for TAG in "${TAGS[@]}"; do
+            docker tag "$LOCAL_IMAGE" "$TAG"
+          done
+
+      - name: Log into Docker registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Push Docker image
+        if: inputs.push
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          IFS=$'\n ' command eval 'TAGS=($TAGS)'
+          for TAG in "${TAGS[@]}"; do
+            echo "::group::docker push $TAG"
+            docker push "$TAG"
+            echo '::endgroup::'
+          done
+
+  amd64:
     if: >
-      github.ref == 'refs/heads/main' &&
-      (
       github.event_name != 'workflow_run' ||
       github.event.workflow_run.conclusion == 'success'
-      )
+    needs:
+      - arm64
     uses: BitskiCo/bitski-internal-sdk/.github/workflows/docker.yaml@v1
     with:
-      build_args: BASE_IMAGE=cockroachdb/cockroach:latest
+      # build_args: BASE_IMAGE=cockroachdb/cockroach:${{ github.ref_name }}
+      build_args: BASE_IMAGE=cockroachdb/cockroach:v21.2.10
+      archs: |
+        amd64
+        arm64
       push: ${{ github.event_name != 'pull_request' }}
       startup_test: true
       startup_image_env_name: COCKROACH_IMAGE
