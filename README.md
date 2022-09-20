@@ -5,4 +5,9 @@ Insecure CockroachDB used for testing
 ## Multi-arch image
 
 To build a multi-arch image for Apple Silicon support, open a GitHub Codespaces
-with the largest instance size. Then, run the `publish-arm64.sh` script.
+with the largest instance size. Then, run the `publish-arm64.sh` script:
+
+```sh
+docker login -u $GITHUB_USER ghcr.io
+./publish-arm64.sh
+```
