@@ -5,7 +5,7 @@ set -ex
 SRCDIR=$(dirname "${0}")
 
 : ${VERSION:=$(
-    docker pull -q cockroachdb/cockroach:latest > /dev/null
+    docker pull -q cockroachdb/cockroach:latest >/dev/null
     docker image inspect \
         --format='{{ (index .Config.Labels "version") }}' \
         cockroachdb/cockroach:latest
@@ -32,7 +32,9 @@ cd cockroach
 ./build/builder.sh mkrelease arm64-linux-gnu
 
 cp cockroach-linux-*-gnu-aarch64 build/deploy/cockroach
-cp "$GOPATH"/go/docker/native/aarch64-unknown-linux-gnu/geos/lib/libgeos{,_c}.so build/deploy/
+cp "$GOPATH/docker/native/aarch64-unknown-linux-gnu/geos/lib/libgeos.so" \
+    "$GOPATH/docker/native/aarch64-unknown-linux-gnu/geos/lib/libgeos_c.so" \
+    build/deploy/
 cp -r licenses build/deploy/
 
 BUILDER=$(docker buildx create --platform=linux/amd64,linux/arm64)
@@ -57,7 +59,7 @@ docker pull "${UPSTREAM_IMAGE}:${TAG}"
 docker tag "${UPSTREAM_IMAGE}:${TAG}" "${BASE_IMAGE}:${TAG}-amd64"
 docker push "${BASE_IMAGE}:${TAG}-amd64"
 
-docker build --push \
+docker buildx build --push \
     --build-arg BASE_IMAGE="${BASE_IMAGE}:${TAG}-amd64" \
     --tag "${IMAGE}:${TAG}-amd64" .
 
