@@ -2,7 +2,7 @@
 
 set -ex
 
-SRCDIR=$(dirname "${0}")
+SRCDIR=$(realpath "$(dirname "${0}")")
 
 : ${VERSION:=$(
     docker pull -q cockroachdb/cockroach:latest >/dev/null
